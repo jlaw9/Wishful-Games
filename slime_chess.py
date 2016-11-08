@@ -2,10 +2,12 @@
 
 from optparse import OptionParser
 import sys
+from copy import copy, deepcopy
 
 def main(num_players, num_rows, num_cols, debug):
     gameboard = GameBoard(num_players, num_rows, num_cols, debug)
-    print "%d players" % num_players
+    print "\nNumber of players: %d, size of board: %d by %d\n" % (num_players, num_rows, num_cols)
+    print "Use 'undo' to undo the previous turn. Can only take back one turn"
     gameboard.print_board()
     curr_player = 1
     # keep taking turns until someone wins
@@ -15,12 +17,16 @@ def main(num_players, num_rows, num_cols, debug):
             try:
                 if debug:
                     print ""
-                    if curr_player == 0:
+                    if curr_player == 1:
                         player_input = "1,1"
-                    elif curr_player == 1:
-                        player_input = "5,5"
+                    elif curr_player == 2:
+                        player_input = "9,9"
                 else:
                     player_input = raw_input("%s: enter a 'row,col' to add slime to: " % gameboard.print_player_color(curr_player, "Player %d" %(curr_player)))
+                # allow the user to undo a move
+                if player_input == "undo":
+                    curr_player = gameboard.undo()
+                    continue
                 row,col = player_input.rstrip().split(',')
                 row = int(row) - 1
                 col = int(col) - 1
@@ -33,6 +39,7 @@ def main(num_players, num_rows, num_cols, debug):
                 owner = gameboard.board[row][col].player
                 print "square owned by %s. Please choose a different square" % \
                 (gameboard.print_player_color(owner, "Player %d" %(owner)))
+                debug = False
             else:
                 break
         # switch players
@@ -43,11 +50,14 @@ class GameBoard:
     # build the game board
     def __init__(self, num_players, num_rows, num_cols, debug=False):
         self.players = range(1,num_players+1)
+        self.prev_players = list(self.players)
         self.board = self.build_board(num_rows, num_cols)
+        self.prev_board = list(self.board)
         # the number of turns taken so far
         self.num_turns = 0
         self.debug = debug
         self.curr_player = 1
+        self.prev_player = self.curr_player
         self.player_colors = {
                 1:"LBLUE",
                 2:"LPURPLE",
@@ -136,6 +146,12 @@ class GameBoard:
         return self.curr_player
 
     def take_turn(self, player, row, col):
+        # keep track of everything before this turn was taken to be able to undo a turn
+        self.prev_player = self.curr_player
+        self.prev_players = list(self.players)
+        #self.prev_board = [x[:] for x in self.board]
+        self.prev_board = deepcopy(self.board)
+
         self.num_turns += 1
         #explode = self.board[row][col].add_slime(player)
         result = self.add_slime_and_explode(player, row, col, slime=1, takeover=False)
@@ -146,13 +162,25 @@ class GameBoard:
         # check if there's a winner
         self.check_winner()
 
+    def undo(self):
+        # set everything to the previous turns settings
+        self.curr_player = self.prev_player
+        self.players = list(self.prev_players)
+        self.board = deepcopy(self.prev_board)
+        #self.board = [row[:] for row in self.prev_board]
+        self.num_turns = self.num_turns - 1
+        # print the board 
+        self.print_board()
+        
+        return self.curr_player
+
     # recursive function to explode
     def add_slime_and_explode(self, player, row, col, slime=1, takeover=False, recursion_depth=0):
         if takeover:
             self.board[row][col].player = player
         # TODO keep the recursion from going to deep and breaking the game
         # try to set a recursion_depth limit to prevent from over-exploding the board?
-        if recursion_depth > 6:
+        if recursion_depth > 500:
             self.board[row][col].current_slime = self.board[row][col].limit - 1
             if self.debug:
                 print "hit recursion limit (6). returning"
